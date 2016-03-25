@@ -42,9 +42,9 @@ def clip(x, minimum, maximum):
 #   Inputs are bounded between [-1, 1]
 #   Outputs are bounded between [-1, 1]
 MAPPINGS = [
-    ('linear',      lambda x: clip(   x                           , -1, 1)),
-    ('quadratic',   lambda x: clip(   math.copysign(x**2, x)      , -1, 1)), 
-    ('log10',       lambda x: clip(   math.log10(4.95 * x + 5.05) , -1, 1))
+    ('linear',      lambda x: clip(   x                                                 , -1, 1)),
+    ('quadratic',   lambda x: clip(   math.copysign(x**2, x)                            , -1, 1))#, 
+    #('log10',       lambda x: clip(   math.copysign(math.log10(4.95 * abs(x) + 5.05), x), -1, 1))
 ]
 
 # List of control modes
@@ -142,7 +142,7 @@ class Controller:
 
     def mapAxis(self, axis):
         # Remove dead zone
-        if abs(axis) < self.dead_zone:
+        if abs(axis) <= self.dead_zone:
             return 0
 
         # Scale the remaining numbers to the whole space
@@ -152,6 +152,8 @@ class Controller:
         axis = scaling_factor * axis + (-1 * axis / abs(axis)) * shifting_factor
         return MAPPINGS[self.mapping][1](-1 * axis)
 
+    # Notes:
+    #   Left and UP are negative, the mapping function inverts this by multiplying by negative one
     def axisEvent(self, event):
         # Not important if its a trigger
         axis = event.axis
@@ -168,7 +170,38 @@ class Controller:
 
 
         elif self.control_mode == CONTROL_MODES.index('linear/angular'):
-            pass
+            linear = self.mapAxis(self.joystick.get_axis(AXES['LUD']))
+            angular = self.mapAxis(self.joystick.get_axis(AXES['RRL']))
+
+            # A positive angular means rotate counter clockwise 
+            #   To rotate counter clockwise the right wheel must go faster than the left wheel in
+            #   the forward direction
+            left = linear - angular
+            right = linear + angular
+
+            # Ensure that left and right are less than one and preserve desired angular effort
+            left_mag = abs(left)
+            right_mag = abs(right)
+            diff = 0
+            if left_mag > right_mag:
+                if left_mag > 1.0:
+                    diff = left_mag - 1.0
+                    diff = math.copysign(diff,left)
+            else:
+                if right_mag > 1.0:
+                    diff = right_mag - 1.0
+                    diff = math.copysign(diff,right)
+
+            left -= diff
+            right -= diff
+
+            # Assign the values
+            self.left_wheel_effort = left * self.gear
+            self.right_wheel_effort = right * self.gear
+
+        # Clip just to be sure
+        self.left_wheel_effort = clip(self.left_wheel_effort, -1, 1)
+        self.right_wheel_effort = clip(self.right_wheel_effort, -1, 1)
 
 
     def draw(self, screen):
@@ -178,7 +211,7 @@ class Controller:
         self.textPrinter.printText(screen, "Mapping: {}".format(MAPPINGS[self.mapping][0]))
         self.textPrinter.printText(screen, "Dead zone: {}%".format(self.dead_zone * 100))
         self.textPrinter.printText(screen, "Control mode: {}".format(CONTROL_MODES[self.control_mode]))
-        self.textPrinter.printText(screen, "Wheel efforts [LEFT, RIGHT]: [{}, {}]%".format(self.left_wheel_effort, self.right_wheel_effort))
+        self.textPrinter.printText(screen, "Wheel efforts [LEFT, RIGHT]: [{}, {}]%".format(self.left_wheel_effort * 100, self.right_wheel_effort * 100))
 
 
 def main():
@@ -214,17 +247,17 @@ def main():
 
             elif event.type == pygame.JOYBUTTONDOWN:
                 controller.buttonDownEvent(event)
-            elif event.type == pygame.JOYBUTTONUP:
-                print 'Joy button up'
-                print event
+            #elif event.type == pygame.JOYBUTTONUP:
+            #    print 'Joy button up'
+            #    print event
             elif event.type == pygame.JOYAXISMOTION:
                 controller.axisEvent(event)
-            elif event.type == pygame.JOYBALLMOTION:
-                print "Joy ball motion"
-                print event
-            elif event.type == pygame.JOYHATMOTION:
-                print "Joy hat motion"
-                print event
+            #elif event.type == pygame.JOYBALLMOTION:
+            #    print "Joy ball motion"
+            #    print event
+            #elif event.type == pygame.JOYHATMOTION:
+            #    print "Joy hat motion"
+            #    print event
 
         # DRAWING STEP
         # First, clear the screen to white. Don't put other drawing commands
