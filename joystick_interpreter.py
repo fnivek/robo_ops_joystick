@@ -38,23 +38,23 @@ def clip(x, minimum, maximum):
         return maximum
     else: 
         return x
-# list of mappings
+# list of MAPPINGS
 #   Inputs are bounded between [-1, 1]
 #   Outputs are bounded between [-1, 1]
-mappings = [
+MAPPINGS = [
     ('linear',      lambda x: clip(   x                           , -1, 1)),
     ('quadratic',   lambda x: clip(   math.copysign(x**2, x)      , -1, 1)), 
     ('log10',       lambda x: clip(   math.log10(4.95 * x + 5.05) , -1, 1))
 ]
 
 # List of control modes
-control_modes = [
+CONTROL_MODES = [
     'differential',
     'linear/angular'
 ]
 
-# Dictionary of buttons
-buttons = {
+# Dictionary of BUTTONS
+BUTTONS = {
     'A'     : 0,
     'B'     : 1,
     'X'     : 2,
@@ -66,6 +66,16 @@ buttons = {
     'HOME'  : 8,
     'LS'    : 9,
     'RS'    : 10
+}
+
+# Dictionary of Axis
+AXES = {
+    'LRL'   : 0,
+    'LUD'   : 1,
+    'LTR'   : 2,
+    'RRL'   : 3,
+    'RUD'   : 4,
+    'RTR'   : 5
 }
 
 # Class for representing a controller
@@ -90,6 +100,10 @@ class Controller:
         # Control mode is how the user wants to drive the vehicle
         self.control_mode = 0
 
+        # Init to zero wheel efforts
+        self.left_wheel_effort = 0
+        self.right_wheel_effort = 0
+
     def index_wrap(self, index, length):
         if index >= length:
             return 0
@@ -103,36 +117,68 @@ class Controller:
         button = event.button
 
         # Control mode
-        if button == buttons['SELECT'] :    # Decrement
-            self.control_mode = self.index_wrap(self.control_mode - 1, len(control_modes))
-        elif button == buttons['START'] :   # Increment
-            self.control_mode = self.index_wrap(self.control_mode + 1, len(control_modes))
+        if button == BUTTONS['SELECT'] :    # Decrement
+            self.control_mode = self.index_wrap(self.control_mode - 1, len(CONTROL_MODES))
+        elif button == BUTTONS['START'] :   # Increment
+            self.control_mode = self.index_wrap(self.control_mode + 1, len(CONTROL_MODES))
 
         # Gear
-        if button == buttons['LB'] :    # Decrement
+        if button == BUTTONS['LB'] :    # Decrement
             self.gear = clip(self.gear - 0.1, 0.1, 1.0)
-        elif button == buttons['RB'] :   # Increment
+        elif button == BUTTONS['RB'] :   # Increment
             self.gear = clip(self.gear + 0.1, 0.1, 1.0)
 
         # Dead zone
-        if button == buttons['A'] :    # Decrement
+        if button == BUTTONS['A'] :    # Decrement
             self.dead_zone = clip(self.dead_zone - 0.01, 0, 0.5)
-        elif button == buttons['B'] :   # Increment
+        elif button == BUTTONS['B'] :   # Increment
             self.dead_zone = clip(self.dead_zone + 0.01, 0, 0.5)
 
         # Mapping
-        if button == buttons['X'] :    # Decrement
-            self.mapping = self.index_wrap(self.mapping - 1, len(mappings))
-        elif button == buttons['Y'] :   # Increment
-            self.mapping = self.index_wrap(self.mapping + 1, len(mappings))
+        if button == BUTTONS['X'] :    # Decrement
+            self.mapping = self.index_wrap(self.mapping - 1, len(MAPPINGS))
+        elif button == BUTTONS['Y'] :   # Increment
+            self.mapping = self.index_wrap(self.mapping + 1, len(MAPPINGS))
+
+    def mapAxis(self, axis):
+        # Remove dead zone
+        if abs(axis) < self.dead_zone:
+            return 0
+
+        # Scale the remaining numbers to the whole space
+        data_range = 1 - self.dead_zone
+        scaling_factor = 1 / data_range
+        shifting_factor = self.dead_zone * scaling_factor
+        axis = scaling_factor * axis + (-1 * axis / abs(axis)) * shifting_factor
+        return MAPPINGS[self.mapping][1](-1 * axis)
+
+    def axisEvent(self, event):
+        # Not important if its a trigger
+        axis = event.axis
+        if axis == AXES['LTR'] or axis == AXES['RTR']:
+            return
+
+        # We don't care which axis actually trigered the event we will use all of the axis
+        # Calculate wheel efforts based on control mode
+
+        # Diferential
+        if self.control_mode == CONTROL_MODES.index('differential'):
+            self.left_wheel_effort = self.gear * self.mapAxis(self.joystick.get_axis(AXES['LUD']))
+            self.right_wheel_effort = self.gear * self.mapAxis(self.joystick.get_axis(AXES['RUD']))
+
+
+        elif self.control_mode == CONTROL_MODES.index('linear/angular'):
+            pass
+
 
     def draw(self, screen):
         self.textPrinter.reset()
         self.textPrinter.printText(screen, "Joystick name: {}".format(self.joystick.get_name()) )
         self.textPrinter.printText(screen, "Gear: {}% max".format(self.gear * 100))
-        self.textPrinter.printText(screen, "Mapping: {}".format(mappings[self.mapping][0]))
+        self.textPrinter.printText(screen, "Mapping: {}".format(MAPPINGS[self.mapping][0]))
         self.textPrinter.printText(screen, "Dead zone: {}%".format(self.dead_zone * 100))
-        self.textPrinter.printText(screen, "Control mode: {}".format(control_modes[self.control_mode]))
+        self.textPrinter.printText(screen, "Control mode: {}".format(CONTROL_MODES[self.control_mode]))
+        self.textPrinter.printText(screen, "Wheel efforts [LEFT, RIGHT]: [{}, {}]%".format(self.left_wheel_effort, self.right_wheel_effort))
 
 
 def main():
@@ -172,8 +218,7 @@ def main():
                 print 'Joy button up'
                 print event
             elif event.type == pygame.JOYAXISMOTION:
-                print "Joy axis motion"
-                print event
+                controller.axisEvent(event)
             elif event.type == pygame.JOYBALLMOTION:
                 print "Joy ball motion"
                 print event
