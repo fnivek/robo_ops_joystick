@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import pygame
+import math
 
 # Define some colors
 BLACK    = (   0,   0,   0)
@@ -15,7 +16,7 @@ class TextPrint:
         self.font = pygame.font.Font(None, 20)
 
     def printText(self, screen, textString):
-        textBitmap = self.font.render(textString, True, BLACK)
+        textBitmap = self.font.render(textString, True, WHITE)
         screen.blit(textBitmap, [self.x, self.y])
         self.y += self.line_height
         
@@ -30,6 +31,59 @@ class TextPrint:
     def unindent(self):
         self.x -= 10
 
+def clip(x):
+    if x < -1.0:
+        return -1.0
+    elif x > 1.0:
+        return 1.0
+    else: 
+        return x
+# list of mappings
+#   Inputs are bounded between [-1, 1]
+#   Outputs are bounded between [-1, 1]
+mappings = [
+    ('linear',      lambda x: clip(   x                           )),
+    ('quadratic',   lambda x: clip(   math.copysign(x**2, x)      )), 
+    ('log10',       lambda x: clip(   math.log10(4.95 * x + 5.05) ))
+]
+
+# List of control modes
+control_modes = [
+    'differential',
+    'linear/angular'
+]
+
+# Class for representing a controller
+class Controller:
+    def __init__(self, joystick):
+        self.joystick = joystick
+        self.joystick.init()
+
+        # Text writer
+        self.textPrinter = TextPrint()
+
+        # Gear is between 0.1 and 1.0
+        #   It is represents the maximum output possible in percentage
+        self.gear = 1.0
+
+        # Maping is the mathmatical function maping the inputs to the outputs
+        self.mapping = 0
+
+        # Dead zone is the region in which the input is considered zero
+        self.dead_zone = 0.01
+
+        # Control mode is how the user wants to drive the vehicle
+        self.control_mode = control_modes[0]
+
+    def draw(self, screen):
+        self.textPrinter.reset()
+        self.textPrinter.printText(screen, "Joystick name: {}".format(self.joystick.get_name()) )
+        self.textPrinter.printText(screen, "Gear: {}".format(self.gear))
+        self.textPrinter.printText(screen, "Mapping: {}".format(mappings[self.mapping][0]))
+        self.textPrinter.printText(screen, "Dead zone: {}".format(self.dead_zone))
+        self.textPrinter.printText(screen, "Control mode: {}".format(self.control_mode))
+
+
 def main():
     # Init pygame
     pygame.init()
@@ -42,9 +96,13 @@ def main():
 
     # Initilize joysticks
     pygame.joystick.init()
-    joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
-    for joystick in joysticks:
-        joystick.init()
+    if pygame.joystick.get_count() == 0:
+        print "No joystick detected please plug one in and try again"
+        return
+
+    
+    # Init a controller
+    controller = Controller(pygame.joystick.Joystick(0))        # TODO: cmd line arg for device
 
     # Get a text printer
     textPrinter = TextPrint()
@@ -71,53 +129,10 @@ def main():
         # DRAWING STEP
         # First, clear the screen to white. Don't put other drawing commands
         # above this, or they will be erased with this command.
-        screen.fill(WHITE)
+        screen.fill(BLACK)
         textPrinter.reset()
 
-        # For each joystick:
-        for i in range(pygame.joystick.get_count()):
-            joystick = pygame.joystick.Joystick(i)
-            joystick.init()
-        
-            textPrinter.printText(screen, "Joystick {}".format(i) )
-            textPrinter.indent()
-        
-            # Get the name from the OS for the controller/joystick
-            name = joystick.get_name()
-            textPrinter.printText(screen, "Joystick name: {}".format(name) )
-            
-            # Usually axis run in pairs, up/down for one, and left/right for
-            # the other.
-            axes = joystick.get_numaxes()
-            textPrinter.printText(screen, "Number of axes: {}".format(axes) )
-            textPrinter.indent()
-            
-            for i in range( axes ):
-                axis = joystick.get_axis( i )
-                textPrinter.printText(screen, "Axis {} value: {:>6.3f}".format(i, axis) )
-            textPrinter.unindent()
-                
-            buttons = joystick.get_numbuttons()
-            textPrinter.printText(screen, "Number of buttons: {}".format(buttons) )
-            textPrinter.indent()
-
-            for i in range( buttons ):
-                button = joystick.get_button( i )
-                textPrinter.printText(screen, "Button {:>2} value: {}".format(i,button) )
-            textPrinter.unindent()
-                
-            # Hat switch. All or nothing for direction, not like joysticks.
-            # Value comes back in an array.
-            hats = joystick.get_numhats()
-            textPrinter.printText(screen, "Number of hats: {}".format(hats) )
-            textPrinter.indent()
-
-            for i in range( hats ):
-                hat = joystick.get_hat( i )
-                textPrinter.printText(screen, "Hat {} value: {}".format(i, str(hat)) )
-            textPrinter.unindent()
-            
-            textPrinter.unindent()
+        controller.draw(screen)
 
         # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
     
