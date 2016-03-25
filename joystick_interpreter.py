@@ -31,20 +31,20 @@ class TextPrint:
     def unindent(self):
         self.x -= 10
 
-def clip(x):
-    if x < -1.0:
-        return -1.0
-    elif x > 1.0:
-        return 1.0
+def clip(x, minimum, maximum):
+    if x < minimum:
+        return minimum
+    elif x > maximum:
+        return maximum
     else: 
         return x
 # list of mappings
 #   Inputs are bounded between [-1, 1]
 #   Outputs are bounded between [-1, 1]
 mappings = [
-    ('linear',      lambda x: clip(   x                           )),
-    ('quadratic',   lambda x: clip(   math.copysign(x**2, x)      )), 
-    ('log10',       lambda x: clip(   math.log10(4.95 * x + 5.05) ))
+    ('linear',      lambda x: clip(   x                           , -1, 1)),
+    ('quadratic',   lambda x: clip(   math.copysign(x**2, x)      , -1, 1)), 
+    ('log10',       lambda x: clip(   math.log10(4.95 * x + 5.05) , -1, 1))
 ]
 
 # List of control modes
@@ -52,6 +52,21 @@ control_modes = [
     'differential',
     'linear/angular'
 ]
+
+# Dictionary of buttons
+buttons = {
+    'A'     : 0,
+    'B'     : 1,
+    'X'     : 2,
+    'Y'     : 3,
+    'LB'    : 4,
+    'RB'    : 5,
+    'SELECT': 6,
+    'START' : 7,
+    'HOME'  : 8,
+    'LS'    : 9,
+    'RS'    : 10
+}
 
 # Class for representing a controller
 class Controller:
@@ -66,22 +81,58 @@ class Controller:
         #   It is represents the maximum output possible in percentage
         self.gear = 1.0
 
-        # Maping is the mathmatical function maping the inputs to the outputs
+        # Maping is the mathmatical function mapping the inputs to the outputs
         self.mapping = 0
 
         # Dead zone is the region in which the input is considered zero
         self.dead_zone = 0.01
 
         # Control mode is how the user wants to drive the vehicle
-        self.control_mode = control_modes[0]
+        self.control_mode = 0
+
+    def index_wrap(self, index, length):
+        if index >= length:
+            return 0
+        elif index < 0:
+            return length - 1
+        else:
+            return index
+
+
+    def buttonDownEvent(self, event):
+        button = event.button
+
+        # Control mode
+        if button == buttons['SELECT'] :    # Decrement
+            self.control_mode = self.index_wrap(self.control_mode - 1, len(control_modes))
+        elif button == buttons['START'] :   # Increment
+            self.control_mode = self.index_wrap(self.control_mode + 1, len(control_modes))
+
+        # Gear
+        if button == buttons['LB'] :    # Decrement
+            self.gear = clip(self.gear - 0.1, 0.1, 1.0)
+        elif button == buttons['RB'] :   # Increment
+            self.gear = clip(self.gear + 0.1, 0.1, 1.0)
+
+        # Dead zone
+        if button == buttons['A'] :    # Decrement
+            self.dead_zone = clip(self.dead_zone - 0.01, 0, 0.5)
+        elif button == buttons['B'] :   # Increment
+            self.dead_zone = clip(self.dead_zone + 0.01, 0, 0.5)
+
+        # Mapping
+        if button == buttons['X'] :    # Decrement
+            self.mapping = self.index_wrap(self.mapping - 1, len(mappings))
+        elif button == buttons['Y'] :   # Increment
+            self.mapping = self.index_wrap(self.mapping + 1, len(mappings))
 
     def draw(self, screen):
         self.textPrinter.reset()
         self.textPrinter.printText(screen, "Joystick name: {}".format(self.joystick.get_name()) )
-        self.textPrinter.printText(screen, "Gear: {}".format(self.gear))
+        self.textPrinter.printText(screen, "Gear: {}% max".format(self.gear * 100))
         self.textPrinter.printText(screen, "Mapping: {}".format(mappings[self.mapping][0]))
-        self.textPrinter.printText(screen, "Dead zone: {}".format(self.dead_zone))
-        self.textPrinter.printText(screen, "Control mode: {}".format(self.control_mode))
+        self.textPrinter.printText(screen, "Dead zone: {}%".format(self.dead_zone * 100))
+        self.textPrinter.printText(screen, "Control mode: {}".format(control_modes[self.control_mode]))
 
 
 def main():
@@ -116,15 +167,19 @@ def main():
                 break
 
             elif event.type == pygame.JOYBUTTONDOWN:
-                print 'Joy button down'
+                controller.buttonDownEvent(event)
             elif event.type == pygame.JOYBUTTONUP:
                 print 'Joy button up'
+                print event
             elif event.type == pygame.JOYAXISMOTION:
                 print "Joy axis motion"
+                print event
             elif event.type == pygame.JOYBALLMOTION:
                 print "Joy ball motion"
+                print event
             elif event.type == pygame.JOYHATMOTION:
                 print "Joy hat motion"
+                print event
 
         # DRAWING STEP
         # First, clear the screen to white. Don't put other drawing commands
